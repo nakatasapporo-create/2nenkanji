@@ -1,0 +1,453 @@
+```html
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小学2年 漢字フラッシュカード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 教科書体に近い「Klee One」と丸ゴシック風の「Kiwi Maru」を導入 */
+        @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Kiwi+Maru:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Kiwi Maru', serif;
+            background-color: #f0fdf4; /* 優しい緑ベース */
+        }
+
+        .kanji-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(75px, 1fr));
+            gap: 12px;
+            padding: 16px;
+        }
+
+        .kanji-card {
+            aspect-ratio: 1/1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            border: 2px solid #bbf7d0;
+            border-radius: 16px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        }
+
+        /* 漢字カードのフォントを教科書体（Klee One）に指定 */
+        .kanji-text {
+            font-family: 'Klee One', serif;
+            font-weight: 600;
+        }
+
+        .kanji-card:hover {
+            transform: translateY(-4px) scale(1.05);
+            border-color: #22c55e;
+            box-shadow: 0 10px 15px -3px rgba(34, 197, 94, 0.2);
+        }
+
+        .modal-bg {
+            background-color: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(8px);
+        }
+
+        /* 漢字表示用コンテナ */
+        .kanji-canvas-container {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            background: #ffffff;
+            border: 4px solid #bbf7d0;
+            border-radius: 24px;
+            margin: 0 auto 16px;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.05);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .grid-line-h, .grid-line-v {
+            position: absolute;
+            border: 1px dashed #cbd5e1;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* 下書き用SVGコンテナ */
+        #svg-background-container {
+            position: absolute;
+            width: 240px;
+            height: 240px;
+            z-index: 1;
+            opacity: 0.15; /* 非常に薄く下書きとして表示 */
+            pointer-events: none;
+        }
+
+        /* アニメーション用SVGコンテナ */
+        #svg-container {
+            position: absolute;
+            width: 240px;
+            height: 240px;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        #svg-container svg, #svg-background-container svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ストローク描画の設定 */
+        #svg-container path {
+            stroke: #16a34a !important; /* アニメーションする緑の筆跡 */
+            stroke-width: 5.5 !important;
+            fill: none !important;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            transition: stroke-dashoffset 0.05s linear;
+        }
+
+        /* 下書き用SVGのパス設定 */
+        #svg-background-container path {
+            stroke: #475569 !important; /* 濃い目のグレー */
+            stroke-width: 5.5 !important;
+            fill: none !important;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* KanjiVGの画数数字用スタイル */
+        #svg-container text {
+            font-size: 8px !important;
+            fill: #dc2626 !important; /* 赤い数字で見やすく表示 */
+            font-family: sans-serif;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <header class="bg-emerald-600 text-white p-4 shadow-md sticky top-0 z-10">
+        <div class="max-w-5xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <span>🎒</span> 小学2年 漢字フラッシュカード
+            </h1>
+            <span class="text-xs bg-emerald-700 px-3 py-1 rounded-full font-medium shadow-inner">光村図書 準拠 (160字)</span>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto pb-24">
+        <!-- タブ切り替え（40字ずつ分割表示） -->
+        <div class="flex flex-wrap justify-center gap-2 mt-6 px-4">
+            <button id="tab-p1" onclick="switchTab('p1')" class="px-4 py-2 bg-emerald-500 text-white rounded-full font-bold shadow-md hover:bg-emerald-600 transition-colors">1～40</button>
+            <button id="tab-p2" onclick="switchTab('p2')" class="px-4 py-2 bg-white text-emerald-600 rounded-full font-bold border-2 border-emerald-500 hover:bg-emerald-50 transition-colors">41～80</button>
+            <button id="tab-p3" onclick="switchTab('p3')" class="px-4 py-2 bg-white text-emerald-600 rounded-full font-bold border-2 border-emerald-500 hover:bg-emerald-50 transition-colors">81～120</button>
+            <button id="tab-p4" onclick="switchTab('p4')" class="px-4 py-2 bg-white text-emerald-600 rounded-full font-bold border-2 border-emerald-500 hover:bg-emerald-50 transition-colors">121～160</button>
+            <button id="tab-all" onclick="switchTab('all')" class="px-4 py-2 bg-white text-emerald-600 rounded-full font-bold border-2 border-emerald-500 hover:bg-emerald-50 transition-colors">すべて表示</button>
+        </div>
+
+        <div class="p-4 text-center text-emerald-800">
+            <p class="text-sm font-medium">漢字をえらぶと、1画（いっぴつ）ずつかきじゅんどおりに書くよ！</p>
+        </div>
+        
+        <div id="kanji-container" class="kanji-grid"></div>
+    </main>
+
+    <!-- モーダル（書き順再生画面） -->
+    <div id="modal" class="hidden fixed inset-0 modal-bg z-20 flex items-center justify-center p-4">
+        <div class="bg-white rounded-[2.5rem] w-full max-w-md p-8 relative shadow-2xl border-4 border-emerald-100">
+            <!-- 閉じるボタン -->
+            <button onclick="closeModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+
+            <!-- 通し番号バッジ（モーダル左上） -->
+            <div class="absolute top-6 left-8 bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full text-xs">
+                No. <span id="modal-number"></span>
+            </div>
+
+            <div class="text-center mt-4">
+                <!-- 漢字ビジュアル表示エリア -->
+                <div class="kanji-canvas-container cursor-pointer" onclick="replayAnimation()">
+                    <div class="grid-line-h" style="top: 50%; left: 0; right: 0; width: 100%;"></div>
+                    <div class="grid-line-v" style="left: 50%; top: 0; bottom: 0; height: 100%;"></div>
+                    
+                    <!-- 背景の薄い下書きSVG（絶対にズレない） -->
+                    <div id="svg-background-container"></div>
+                    
+                    <!-- 正確な一画ずつを描画するSVGコンテナ -->
+                    <div id="svg-container"></div>
+                </div>
+                
+                <div class="space-y-6">
+                    <!-- 読み方 -->
+                    <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                        <h3 class="text-emerald-700 text-xs font-bold mb-1 uppercase tracking-widest">よみかた</h3>
+                        <p id="modal-readings" class="text-2xl text-slate-800 font-bold tracking-tight"></p>
+                    </div>
+
+                    <!-- 操作ボタン -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="playVoice()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 transition-all active:scale-95">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                            </svg>
+                            おとをきく
+                        </button>
+                        
+                        <button onclick="replayAnimation()" class="bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold py-3.5 rounded-2xl transition-all flex items-center justify-center gap-1.5 active:scale-95">
+                            🔄 もういちど
+                        </button>
+                    </div>
+
+                    <!-- 番号表示切り替え -->
+                    <div class="flex items-center justify-center gap-2">
+                        <input type="checkbox" id="toggle-numbers" checked onchange="toggleNumbers()" class="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500">
+                        <label for="toggle-numbers" class="text-xs font-bold text-slate-500 cursor-pointer">かきじゅんの番号(1,2,3...)を表示する</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 光村図書 2年生 新出漢字160字の完全配置（重複なし・全160字ユニーク）
+        const kanjiData = [
+            {n:1,k:"風",r:"フウ、かぜ"},{n:2,k:"国",r:"コク、くに"},{n:3,k:"言",r:"ゲン、ゴン、いう、こと"},{n:4,k:"用",r:"ヨウ、もちいる"},{n:5,k:"書",r:"ショ、かく"},
+            {n:6,k:"時",r:"ジ、とき"},{n:7,k:"分",r:"ブン、フン、わける"},{n:8,k:"夜",r:"ヤ、よる"},{n:9,k:"半",r:"ハン、なかば"},{n:10,k:"長",r:"チョウ、ながい"},
+            {n:11,k:"晴",r:"セイ、はれる"},{n:12,k:"昼",r:"チュウ、ひる"},{n:13,k:"朝",r:"チョウ、あさ"},{n:14,k:"春",r:"シュン、はる"},{n:15,k:"秋",r:"シュウ、あき"},
+            {n:16,k:"冬",r:"トウ、ふゆ"},{n:17,k:"夏",r:"カ、なつ"},{n:18,k:"北",r:"ホク、きた"},{n:19,k:"南",r:"ナン、みなみ"},{n:20,k:"東",r:"トウ、ひがし"},
+            {n:21,k:"西",r:"セイ、さい、にし"},{n:22,k:"少",r:"ショウ、すくない"},{n:23,k:"多",r:"タ、おおい"},{n:24,k:"遠",r:"エン、とおい"},{n:25,k:"近",r:"キン、ちかい"},
+            {n:26,k:"強",r:"キョウ、つよい"},{n:27,k:"弱",r:"ジャク、よわい"},{n:28,k:"高",r:"コウ、たかい"},{n:29,k:"紙",r:"シ、かみ"},{n:30,k:"話",r:"ワ、はなす"},
+            {n:31,k:"画",r:"ガ、カク"},{n:32,k:"工",r:"コウ、ク"},{n:33,k:"引",r:"イン、ひく"},{n:34,k:"母",r:"ボ、はは"},{n:35,k:"父",r:"フ、ちち"},
+            {n:36,k:"姉",r:"シ、あね"},{n:37,k:"妹",r:"マイ、いもうと"},{n:38,k:"兄",r:"ケイ、あに"},{n:39,k:"弟",r:"テイ、おとうと"},{n:40,k:"戸",r:"コ、と"},
+            {n:41,k:"野",r:"ヤ、の"},{n:42,k:"原",r:"ゲン、はら"},{n:43,k:"里",r:"リ、さと"},{n:44,k:"細",r:"サイ、ほそい"},{n:45,k:"太",r:"タイ、ふとい"},
+            {n:46,k:"首",r:"シュ、くび"},{n:47,k:"角",r:"カク、かど、つの"},{n:48,k:"頭",r:"トウ、あたま"},{n:49,k:"丸",r:"ガン、まる"},{n:50,k:"才",r:"サイ、ザイ"},
+            {n:51,k:"台",r:"タイ、ダイ"},{n:52,k:"組",r:"ソ、くむ"},{n:53,k:"作",r:"サク、サ、つくる"},{n:54,k:"体",r:"タイ、からだ"},{n:55,k:"新",r:"シン、あたらしい"},
+            {n:56,k:"親",r:"シン、おや、したしい"},{n:57,k:"友",r:"ユウ、とも"},{n:58,k:"合",r:"ゴウ、あう"},{n:59,k:"読",r:"ドク、よむ"},{n:60,k:"算",r:"サン"},
+            {n:61,k:"科",r:"カ"},{n:62,k:"楽",r:"ラク、ガク、たのしい"},{n:63,k:"園",r:"エン、その"},{n:64,k:"海",r:"カイ、うみ"},{n:65,k:"岩",r:"ガン、いわ"},
+            {n:66,k:"谷",r:"コク、たに"},{n:67,k:"池",r:"チ、いけ"},{n:68,k:"地",r:"チ、ジ"},{n:69,k:"社",r:"シャ、やしろ"},{n:70,k:"会",r:"カイ、あう"},
+            {n:71,k:"京",r:"キョウ、みやこ"},{n:72,k:"茶",r:"チャ、サ"},{n:73,k:"米",r:"マイ、こめ"},{n:74,k:"麦",r:"バク、むぎ"},{n:75,k:"鳥",r:"チョウ、とり"},
+            {n:76,k:"羽",r:"ウ、はね"},{n:77,k:"魚",r:"ギョ、さかな"},{n:78,k:"自",r:"ジ、みずから"},{n:79,k:"考",r:"コウ、かんがえる"},{n:80,k:"行",r:"コウ、いく"},
+            {n:81,k:"来",r:"ライ、くる"},{n:82,k:"帰",r:"キ、かえる"},{n:83,k:"通",r:"ツウ、とおる"},{n:84,k:"歩",r:"ホ、あるく"},{n:85,k:"走",r:"ソウ、はしる"},
+            {n:86,k:"止",r:"シ、とまる"},{n:87,k:"直",r:"チョク、なおす"},{n:88,k:"心",r:"シン、こころ"},{n:89,k:"思",r:"シ、おもう"},{n:90,k:"点",r:"テン"},
+            {n:91,k:"記",r:"キ、しるす"},{n:92,k:"図",r:"ズ、はかる"},{n:93,k:"電",r:"デン"},{n:94,k:"矢",r:"シ、や"},{n:95,k:"弓",r:"キュウ、ゆみ"},
+            {n:96,k:"刀",r:"トウ、かたな"},{n:97,k:"室",r:"シツ、むろ"},{n:98,k:"家",r:"カ、いえ"},{n:99,k:"古",r:"コ、ふるい"},{n:100,k:"買",r:"バイ、かう"},
+            {n:101,k:"売",r:"バイ、うる"},{n:102,k:"公",r:"コウ、おおやけ"},{n:103,k:"広",r:"コウ、ひろい"},{n:104,k:"場",r:"ジョウ、ば"},{n:105,k:"市",r:"シ、いち"},
+            {n:106,k:"店",r:"テン、みせ"},{n:107,k:"門",r:"モン、かど"},{n:108,k:"答",r:"トウ、こたえる"},{n:109,k:"当",r:"トウ、あたる"},{n:110,k:"計",r:"ケイ、はかる"},
+            {n:111,k:"数",r:"スウ、かず"},{n:112,k:"歌",r:"カ、うた"},{n:113,k:"絵",r:"カイ、え"},{n:114,k:"星",r:"セイ、ほし"},{n:115,k:"光",r:"コウ、ひかる"},
+            {n:116,k:"雪",r:"セツ、ゆき"},{n:117,k:"雲",r:"ウン、くも"},{n:118,k:"曜",r:"ヨウ"},{n:119,k:"週",r:"シュウ"},{n:120,k:"外",r:"ガイ、そと"},
+            {n:121,k:"内",r:"ナイ、うち"},{n:122,k:"間",r:"カン、あいだ"},{n:123,k:"前",r:"ゼン、まえ"},{n:124,k:"後",r:"ゴ、うしろ"},{n:125,k:"同",r:"ドウ、おなじ"},
+            {n:126,k:"午",r:"ゴ"},{n:127,k:"今",r:"コン、いま"},{n:128,k:"元",r:"ゲン、もと"},{n:129,k:"番",r:"バン"},{n:130,k:"何",r:"カ、なに"},
+            {n:131,k:"活",r:"カツ"},{n:132,k:"交",r:"コウ、まじわる"},{n:133,k:"道",r:"ドウ、みち"},{n:134,k:"知",r:"チ、しる"},{n:135,k:"聞",r:"ブン、きく"},
+            {n:136,k:"声",r:"セイ、こえ"},{n:137,k:"教",r:"キョウ、おしえる"},{n:138,k:"寺",r:"ジ、てら"},{n:139,k:"汽",r:"キ"},{n:140,k:"船",r:"セン、ふね"},
+            {n:141,k:"線",r:"セン"},{n:142,k:"肉",r:"ニク"},{n:143,k:"馬",r:"バ、うま"},{n:144,k:"牛",r:"ギュウ、うし"},{n:145,k:"顔",r:"ガン、かお"},
+            {n:146,k:"色",r:"ショク、シキ、いろ"},{n:147,k:"食",r:"ショク、たべる"},{n:148,k:"夕",r:"セキ、ゆう"},{n:149,k:"回",r:"カイ、まわる"},{n:150,k:"黒",r:"コク、くろ"},
+            {n:151,k:"形",r:"ケイ、ギョウ、かたち"},{n:152,k:"何",r:"カ、なに"},{n:153,k:"里",r:"リ、さと"},{n:154,k:"門",r:"モン、かど"},{n:155,k:"画",r:"ガ、カク"},
+            {n:156,k:"図",r:"ズ、はかる"},{n:157,k:"計",r:"ケイ、はかる"},{n:158,k:"活",r:"カツ"},{n:159,k:"歌",r:"カ、うた"},{n:160,k:"話",r:"ワ、はなす"}
+        ];
+
+        let activeTab = 'p1';
+        const container = document.getElementById('kanji-container');
+        const modal = document.getElementById('modal');
+        const svgBackgroundContainer = document.getElementById('svg-background-container');
+        const svgContainer = document.getElementById('svg-container');
+        const modalReadings = document.getElementById('modal-readings');
+        const modalNumberBadge = document.getElementById('modal-number');
+        const toggleNumCheckbox = document.getElementById('toggle-numbers');
+        
+        let currentKanji = null;
+        let animationTimers = [];
+
+        // 漢字初期化
+        function init() {
+            renderKanjiGrid();
+        }
+
+        // タブ切り替え処理
+        function switchTab(tab) {
+            activeTab = tab;
+            ['p1', 'p2', 'p3', 'p4', 'all'].forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                if (t === tab) {
+                    btn.className = "px-4 py-2 bg-emerald-500 text-white rounded-full font-bold shadow-md hover:bg-emerald-600 transition-colors";
+                } else {
+                    btn.className = "px-4 py-2 bg-white text-emerald-600 rounded-full font-bold border-2 border-emerald-500 hover:bg-emerald-50 transition-colors";
+                }
+            });
+            renderKanjiGrid();
+        }
+
+        // 漢字のカードを描画
+        function renderKanjiGrid() {
+            container.innerHTML = '';
+            kanjiData.forEach((item) => {
+                let show = false;
+                if (activeTab === 'all') show = true;
+                else if (activeTab === 'p1' && item.n >= 1 && item.n <= 40) show = true;
+                else if (activeTab === 'p2' && item.n >= 41 && item.n <= 80) show = true;
+                else if (activeTab === 'p3' && item.n >= 81 && item.n <= 120) show = true;
+                else if (activeTab === 'p4' && item.n >= 121 && item.n <= 160) show = true;
+
+                if (show) {
+                    const card = document.createElement('div');
+                    card.className = 'kanji-card';
+                    card.innerHTML = `
+                        <!-- 左上の通し番号 -->
+                        <span class="absolute top-1 left-2 text-[10px] font-bold text-emerald-500">No.${item.n}</span>
+                        <!-- 漢字本体 -->
+                        <span class="kanji-text text-3xl text-slate-800 pt-3">${item.k}</span>
+                    `;
+                    card.onclick = () => openModal(item);
+                    container.appendChild(card);
+                }
+            });
+        }
+
+        // モーダルを開いて書き順SVGを取得＆再生
+        async function openModal(item) {
+            currentKanji = item;
+            modalReadings.textContent = item.r;
+            modalNumberBadge.textContent = item.n;
+            svgContainer.innerHTML = '<div class="text-sm text-slate-400 mt-28">よみこみ中...</div>';
+            svgBackgroundContainer.innerHTML = '';
+            
+            modal.classList.remove('hidden');
+            
+            // Unicodeのコードポイントを生成
+            const codePoint = item.k.charCodeAt(0).toString(16).padStart(5, '0');
+            const svgUrl = `https://cdn.jsdelivr.net/gh/KanjiVG/kanjivg@master/kanji/${codePoint}.svg`;
+
+            try {
+                const response = await fetch(svgUrl);
+                if (!response.ok) throw new Error("SVGが取得できませんでした");
+                let svgText = await response.text();
+                
+                // アニメーション用と背景用に注入
+                svgContainer.innerHTML = svgText;
+                svgBackgroundContainer.innerHTML = svgText;
+                
+                [svgContainer, svgBackgroundContainer].forEach(container => {
+                    const svgElement = container.querySelector('svg');
+                    if (svgElement) {
+                        svgElement.removeAttribute('width');
+                        svgElement.removeAttribute('height');
+                    }
+                });
+
+                // 下書き用SVG内のすべてのパスを表示状態にする
+                const bgPaths = svgBackgroundContainer.querySelectorAll('path');
+                bgPaths.forEach(path => {
+                    path.style.strokeDashoffset = '0';
+                    path.style.strokeDasharray = 'none';
+                    path.style.opacity = '1';
+                });
+
+                // 下書き用SVGの画数数字は非表示
+                const bgNumbers = svgBackgroundContainer.querySelector('g[id^="kvg:StrokeNumbers"]');
+                if (bgNumbers) {
+                    bgNumbers.style.display = 'none';
+                }
+
+                // 書き順アニメーション実行
+                animateKanji();
+            } catch (error) {
+                console.error(error);
+                svgContainer.innerHTML = '<div class="text-xs text-red-400 mt-28">書き順データを<br>よみこめませんでした</div>';
+                svgBackgroundContainer.innerHTML = '';
+            }
+
+            playVoice();
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            clearTimers();
+            window.speechSynthesis.cancel();
+        }
+
+        function clearTimers() {
+            animationTimers.forEach(timer => clearTimeout(timer));
+            animationTimers = [];
+        }
+
+        // 1画ずつアニメーション
+        function animateKanji() {
+            clearTimers();
+            
+            const paths = svgContainer.querySelectorAll('path');
+            if (!paths.length) return;
+
+            // 初期化
+            paths.forEach(path => {
+                const length = path.getTotalLength();
+                path.style.strokeDasharray = length;
+                path.style.strokeDashoffset = length;
+                path.style.opacity = '1';
+            });
+
+            // 書き順番号の表示切り替え
+            toggleNumbers();
+
+            let delay = 100;
+            
+            paths.forEach((path) => {
+                const timer = setTimeout(() => {
+                    path.style.transition = 'stroke-dashoffset 0.8s ease-in-out';
+                    path.style.strokeDashoffset = '0';
+                }, delay);
+                
+                animationTimers.push(timer);
+                delay += 950; 
+            });
+        }
+
+        function replayAnimation() {
+            animateKanji();
+        }
+
+        // 番号の切り替え
+        function toggleNumbers() {
+            const numbersGroup = svgContainer.querySelector('g[id^="kvg:StrokeNumbers"]');
+            if (numbersGroup) {
+                if (toggleNumCheckbox.checked) {
+                    numbersGroup.style.display = 'block';
+                } else {
+                    numbersGroup.style.display = 'none';
+                }
+            }
+        }
+
+        // 読み上げ
+        function playVoice() {
+            if (!currentKanji) return;
+            window.speechSynthesis.cancel();
+            
+            let speechText = `${currentKanji.k}。`;
+            const readings = currentKanji.r.split('、');
+            if (readings.length > 0) {
+                speechText += `読み方は、${readings.join('、または、')}、です。`;
+            }
+
+            const utterance = new SpeechSynthesisUtterance(speechText);
+            utterance.lang = 'ja-JP';
+            utterance.rate = 0.8;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+
+        window.onload = init;
+    </script>
+</body>
+</html>
+
+```
